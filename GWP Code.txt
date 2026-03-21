@@ -1,0 +1,304 @@
+CODE BY WISDOM OKOH
+
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+metrics = {
+    "Canada": {
+        "Best Case": {
+            2019: {"USA": {"Imported": 3.04E-04, "Manufactured": 1.45E-04},
+                   "Belgium": {"Imported":7.38E-07, "Manufactured": 2.15E-07}},
+            2020: {"USA": {"Imported": 2.41E-04, "Manufactured": 1.15E-04},
+                   "Belgium": {"Imported":1.17E-06, "Manufactured": 3.41E-07}},
+            2021: {"USA": {"Imported": 3.02E-04, "Manufactured": 1.44E-04},
+                   "Belgium": {"Imported":1.09E-06, "Manufactured":	3.16E-07}},
+            2022: {"USA": {"Imported": 3.29E-04, "Manufactured": 1.57E-04},
+                   "Belgium": {"Imported":1.46E-06, "Manufactured":	4.24E-07}},
+            2023: {"USA": {"Imported": 3.50E-04, "Manufactured": 1.67E-04},
+                   "Belgium": {"Imported":6.76E-07, "Manufactured":	1.97E-07}},
+            2024: {"USA": {"Imported": 3.79E-04, "Manufactured": 1.81E-04},
+                   "Belgium": {"Imported":6.41E-07, "Manufactured":	1.87E-07}},
+        },
+        "Probable Case": {
+            2019: {"USA": {"Imported": 3.04E-04, "Manufactured": 1.60E-04},
+                   "Belgium": {"Imported":7.38E-07, "Manufactured":	2.37E-07}},
+            2020: {"USA": {"Imported": 2.41E-04, "Manufactured": 1.27E-04},
+                   "Belgium": {"Imported":1.17E-06, "Manufactured":	3.76E-07}},
+            2021: {"USA": {"Imported": 3.02E-04, "Manufactured": 1.59E-04},
+                   "Belgium": {"Imported":1.09E-06, "Manufactured":	3.50E-07}},
+            2022: {"USA": {"Imported": 3.29E-04, "Manufactured": 1.73E-04},
+                   "Belgium": {"Imported":1.46E-06, "Manufactured":	4.68E-07}},
+            2023: {"USA": {"Imported": 3.50E-04, "Manufactured": 1.84E-04},
+                   "Belgium": {"Imported":6.76E-07, "Manufactured":	2.18E-07}},
+            2024: {"USA": {"Imported": 3.79E-04, "Manufactured": 2.00E-04},
+                   "Belgium": {"Imported":6.41E-07, "Manufactured":	2.06E-07}},
+        },
+        "Worst Case": {
+            2019: {"USA": {"Imported": 3.04E-04, "Manufactured": 2.07E-04},
+                   "Belgium": {"Imported":7.38E-07, "Manufactured":	3.07E-07}},
+            2020: {"USA": {"Imported": 2.41E-04, "Manufactured": 1.64E-04},
+                   "Belgium": {"Imported":1.17E-06, "Manufactured":	4.86E-07}},
+            2021: {"USA": {"Imported": 3.02E-04, "Manufactured": 2.05E-04},
+                   "Belgium": {"Imported":1.09E-06, "Manufactured":	4.51E-07}},
+            2022: {"USA": {"Imported": 3.29E-04, "Manufactured": 2.24E-04},
+                   "Belgium": {"Imported":1.46E-06, "Manufactured":	6.05E-07}},
+            2023: {"USA": {"Imported": 3.50E-04, "Manufactured": 2.38E-04},
+                   "Belgium": {"Imported":6.76E-07, "Manufactured":	2.81E-07}},
+            2024: {"USA": {"Imported": 3.79E-04, "Manufactured": 2.58E-04},
+                   "Belgium": {"Imported":6.41E-07, "Manufactured":	2.67E-07}},
+        }
+    },
+    "China": {
+        "Best Case": {
+            2019: {"Australia": {"Imported": 1.52E-04, "Manufactured": 9.82E-05},
+                    "Malaysia": {"Imported": 5.53E-05, "Manufactured": 5.84E-05},
+                    "Cambodia": {"Imported": 3.55E-05, "Manufactured": 4.24E-05},
+                     "Vietnam": {"Imported": 1.90E-06, "Manufactured": 2.48E-06}},
+            2020: {"Australia": {"Imported": 1.84E-04, "Manufactured": 1.19E-04},
+                    "Malaysia": {"Imported": 1.29E-04, "Manufactured": 1.37E-04},
+                   "Indonesia": {"Imported": 6.11E-05, "Manufactured": 6.18E-05}},
+            2021: {"Australia": {"Imported": 1.90E-04, "Manufactured": 1.23E-04},
+                   "Indonesia": {"Imported": 1.25E-04, "Manufactured": 1.26E-04},
+                    "Malaysia": {"Imported": 6.29E-05, "Manufactured": 6.65E-05},
+                       "Egypt": {"Imported": 1.28E-05, "Manufactured": 6.73E-06}},
+            2022: {"Australia": {"Imported": 2.08E-04, "Manufactured": 1.35E-04},
+                    "Malaysia": {"Imported": 1.20E-04, "Manufactured": 1.26E-04},
+                   "Indonesia": {"Imported": 8.47E-05, "Manufactured": 8.56E-05},
+                       "Egypt": {"Imported": 2.08E-05, "Manufactured": 1.09E-05},
+                      "Jordan": {"Imported": 6.79E-06, "Manufactured": 3.62E-06}},
+            2023: {"Australia": {"Imported": 2.57E-04, "Manufactured": 1.67E-04},
+                   "Indonesia": {"Imported": 1.95E-04, "Manufactured": 1.97E-04},
+                    "Malaysia": {"Imported": 1.80E-04, "Manufactured": 1.90E-04},
+                       "Egypt": {"Imported": 6.24E-05, "Manufactured": 3.27E-05},
+                      "Jordan": {"Imported": 3.41E-05, "Manufactured": 1.82E-05},
+                     "Vietnam": {"Imported": 4.72E-06, "Manufactured": 6.16E-06}},
+            2024: {"Indonesia": {"Imported": 2.49E-04, "Manufactured": 2.52E-04},
+                   "Australia": {"Imported": 1.88E-04, "Manufactured": 1.22E-04},
+                    "Malaysia": {"Imported": 1.30E-04, "Manufactured": 1.37E-04},
+                       "Egypt": {"Imported": 2.85E-05, "Manufactured": 1.49E-05},
+                      "Jordan": {"Imported": 1.38E-05, "Manufactured": 7.34E-06}},
+        },
+        "Probable Case": {
+            2019: {"Australia": {"Imported": 1.52E-04, "Manufactured": 1.01E-04},
+                    "Malaysia": {"Imported": 5.53E-05, "Manufactured": 5.99E-05},
+                    "Cambodia": {"Imported": 3.55E-05, "Manufactured": 4.35E-05},
+                     "Vietnam": {"Imported": 1.90E-06, "Manufactured": 2.54E-06}},
+            2020: {"Australia": {"Imported": 1.84E-04, "Manufactured": 1.22E-04},
+                    "Malaysia": {"Imported": 1.29E-04, "Manufactured": 1.40E-04},
+                   "Indonesia": {"Imported": 6.11E-05, "Manufactured": 6.34E-05}},
+            2021: {"Australia": {"Imported": 1.90E-04, "Manufactured": 1.26E-04},
+                   "Indonesia": {"Imported": 1.25E-04, "Manufactured": 1.29E-04},
+                    "Malaysia": {"Imported": 6.29E-05, "Manufactured": 6.82E-05},
+                       "Egypt": {"Imported": 1.28E-05, "Manufactured": 6.91E-06}},
+            2022: {"Australia": {"Imported": 2.08E-04, "Manufactured": 1.39E-04},
+                    "Malaysia": {"Imported": 1.20E-04, "Manufactured": 1.30E-04},
+                   "Indonesia": {"Imported": 8.47E-05, "Manufactured": 8.79E-05},
+                       "Egypt": {"Imported": 2.08E-05, "Manufactured": 1.12E-05},
+                      "Jordan": {"Imported": 6.79E-06, "Manufactured": 3.71E-06}},
+            2023: {"Australia": {"Imported": 2.57E-04, "Manufactured": 1.71E-04},
+                   "Indonesia": {"Imported": 1.95E-04, "Manufactured": 2.02E-04},
+                    "Malaysia": {"Imported": 1.80E-04, "Manufactured": 1.95E-04},
+                       "Egypt": {"Imported": 6.24E-05, "Manufactured": 3.36E-05},
+                      "Jordan": {"Imported": 3.41E-05, "Manufactured": 1.87E-05},
+                     "Vietnam": {"Imported": 4.72E-06, "Manufactured": 6.32E-06}},
+            2024: {"Indonesia": {"Imported": 2.49E-04, "Manufactured": 2.58E-04},
+                   "Australia": {"Imported": 1.88E-04, "Manufactured": 1.25E-04},
+                    "Malaysia": {"Imported": 1.30E-04, "Manufactured": 1.40E-04},
+                       "Egypt": {"Imported": 2.85E-05, "Manufactured": 1.53E-05},
+                      "Jordan": {"Imported": 1.38E-05, "Manufactured": 7.53E-06}},
+        },
+        "Worst Case": {
+            2019: {"Australia": {"Imported": 1.52E-04, "Manufactured": 1.01E-04},
+                    "Malaysia": {"Imported": 5.53E-05, "Manufactured": 5.99E-05},
+                    "Cambodia": {"Imported": 3.55E-05, "Manufactured": 4.35E-05},
+                     "Vietnam": {"Imported": 1.90E-06, "Manufactured": 2.54E-06}},
+            2020: {"Australia": {"Imported": 1.84E-04, "Manufactured": 1.22E-04},
+                    "Malaysia": {"Imported": 1.29E-04, "Manufactured": 1.40E-04},
+                   "Indonesia": {"Imported": 6.11E-05, "Manufactured": 6.34E-05}},
+            2021: {"Australia": {"Imported": 1.90E-04, "Manufactured": 1.26E-04},
+                   "Indonesia": {"Imported": 1.25E-04, "Manufactured": 1.29E-04},
+                    "Malaysia": {"Imported": 6.29E-05, "Manufactured": 6.82E-05},
+                       "Egypt": {"Imported": 1.28E-05, "Manufactured": 6.91E-06}},
+            2022: {"Australia": {"Imported": 2.08E-04, "Manufactured": 1.39E-04},
+                    "Malaysia": {"Imported": 1.20E-04, "Manufactured": 1.30E-04},
+                   "Indonesia": {"Imported": 8.47E-05, "Manufactured": 8.79E-05},
+                       "Egypt": {"Imported": 2.08E-05, "Manufactured": 1.12E-05},
+                      "Jordan": {"Imported": 6.79E-06, "Manufactured": 3.71E-06}},
+            2023: {"Australia": {"Imported": 2.57E-04, "Manufactured": 1.71E-04},
+                   "Indonesia": {"Imported": 1.95E-04, "Manufactured": 2.02E-04},
+                    "Malaysia": {"Imported": 1.80E-04, "Manufactured": 1.95E-04},
+                       "Egypt": {"Imported": 6.24E-05, "Manufactured": 3.36E-05},
+                      "Jordan": {"Imported": 3.41E-05, "Manufactured": 1.87E-05},
+                     "Vietnam": {"Imported": 4.72E-06, "Manufactured": 6.32E-06}},
+            2024: {"Indonesia": {"Imported": 2.49E-04, "Manufactured": 2.58E-04},
+                   "Australia": {"Imported": 1.88E-04, "Manufactured": 1.25E-04},
+                    "Malaysia": {"Imported": 1.30E-04, "Manufactured": 1.40E-04},
+                       "Egypt": {"Imported": 2.85E-05, "Manufactured": 1.53E-05},
+                      "Jordan": {"Imported": 1.38E-05, "Manufactured": 7.53E-06}},
+        }
+    },
+"RoW": {
+    "Best Case": {
+        2019: {"Min": {"Imported": 1.20E-03, "Manufactured": 1.89E-03},
+               "Med": {"Imported": 2.09E-03, "Manufactured": 1.89E-03},
+               "Max": {"Imported": 6.52E-03, "Manufactured": 1.89E-03}},
+        2020: {"Min": {"Imported": 1.04E-03, "Manufactured": 1.64E-03},
+               "Med": {"Imported": 1.81E-03, "Manufactured": 1.64E-03},
+               "Max": {"Imported": 5.64E-03, "Manufactured": 1.64E-03}},
+        2021: {"Min": {"Imported": 1.22E-03, "Manufactured": 1.92E-03},
+               "Med": {"Imported": 2.13E-03, "Manufactured": 1.92E-03},
+               "Max": {"Imported": 6.63E-03, "Manufactured": 1.92E-03}},
+        2022: {"Min": {"Imported": 1.02E-03, "Manufactured": 1.62E-03},
+               "Med": {"Imported": 1.79E-03, "Manufactured": 1.62E-03},
+               "Max": {"Imported": 5.58E-03, "Manufactured": 1.62E-03}},
+        2023: {"Min": {"Imported": 1.08E-03, "Manufactured": 1.70E-03},
+               "Med": {"Imported": 1.88E-03, "Manufactured": 1.70E-03},
+               "Max": {"Imported": 5.86E-03, "Manufactured": 1.70E-03}},
+        2024: {"Min": {"Imported": 6.84E-04, "Manufactured": 1.08E-03},
+               "Med": {"Imported": 1.19E-03, "Manufactured": 1.08E-03},
+               "Max": {"Imported": 3.72E-03, "Manufactured": 1.08E-03}},
+    },
+    "Probable Case": {
+        2019: {"Min": {"Imported": 1.20E-03, "Manufactured": 2.19E-03},
+               "Med": {"Imported": 2.09E-03, "Manufactured": 2.19E-03},
+               "Max": {"Imported": 6.52E-03, "Manufactured": 2.19E-03}},
+        2020: {"Min": {"Imported": 1.04E-03, "Manufactured": 1.90E-03},
+               "Med": {"Imported": 1.81E-03, "Manufactured": 1.90E-03},
+               "Max": {"Imported": 5.64E-03, "Manufactured": 1.90E-03}},
+        2021: {"Min": {"Imported": 1.22E-03, "Manufactured": 2.23E-03},
+               "Med": {"Imported": 2.13E-03, "Manufactured": 2.23E-03},
+               "Max": {"Imported": 6.63E-03, "Manufactured": 2.23E-03}},
+        2022: {"Min": {"Imported": 1.02E-03, "Manufactured": 1.88E-03},
+               "Med": {"Imported": 1.79E-03, "Manufactured": 1.88E-03},
+               "Max": {"Imported": 5.58E-03, "Manufactured": 1.88E-03}},
+        2023: {"Min": {"Imported": 1.08E-03, "Manufactured": 1.97E-03},
+               "Med": {"Imported": 1.88E-03, "Manufactured": 1.97E-03},
+               "Max": {"Imported": 5.86E-03, "Manufactured": 1.97E-03}},
+        2024: {"Min": {"Imported": 6.84E-04, "Manufactured": 1.25E-03},
+               "Med": {"Imported": 1.19E-03, "Manufactured": 1.25E-03},
+               "Max": {"Imported": 3.72E-03, "Manufactured": 1.25E-03}},
+    },
+    "Worst Case": {
+        2019: {"Min": {"Imported": 1.20E-03, "Manufactured": 2.60E-03},
+               "Med": {"Imported": 2.09E-03, "Manufactured": 2.60E-03},
+               "Max": {"Imported": 6.52E-03, "Manufactured": 2.60E-03}},
+        2020: {"Min": {"Imported": 1.04E-03, "Manufactured": 2.25E-03},
+               "Med": {"Imported": 1.81E-03, "Manufactured": 2.25E-03},
+               "Max": {"Imported": 5.64E-03, "Manufactured": 2.25E-03}},
+        2021: {"Min": {"Imported": 1.22E-03, "Manufactured": 2.64E-03},
+               "Med": {"Imported": 2.13E-03, "Manufactured": 2.64E-03},
+               "Max": {"Imported": 6.63E-03, "Manufactured": 2.64E-03}},
+        2022: {"Min": {"Imported": 1.02E-03, "Manufactured": 2.22E-03},
+               "Med": {"Imported": 1.79E-03, "Manufactured": 2.22E-03},
+               "Max": {"Imported": 5.58E-03, "Manufactured": 2.22E-03}},
+        2023: {"Min": {"Imported": 1.08E-03, "Manufactured": 2.34E-03},
+               "Med": {"Imported": 1.88E-03, "Manufactured": 2.34E-03},
+               "Max": {"Imported": 5.86E-03, "Manufactured": 2.34E-03}},
+        2024: {"Min": {"Imported": 6.84E-04, "Manufactured": 1.48E-03},
+               "Med": {"Imported": 1.19E-03, "Manufactured": 1.48E-03},
+               "Max": {"Imported": 3.72E-03, "Manufactured": 1.48E-03}},
+    }
+}
+}
+
+records = []
+for region, scenarios in metrics.items():
+    for scenario, years_data in scenarios.items():
+        for year, countries in years_data.items():
+            for country, metric_vals in countries.items():
+                for metric, value in metric_vals.items():
+                    records.append({
+                        "Region": region,
+                        "Scenario": scenario,
+                        "Year": year,
+                        "Country": country,
+                        "Metric": metric,
+                        "Metric_Value": value
+                    })
+
+df_long = pd.DataFrame(records)
+
+df_filtered = df_long[df_long['Metric'].isin(['Imported', 'Manufactured'])]
+regions = df_filtered['Region'].unique()
+years = sorted(df_filtered['Year'].unique())
+
+metric_colors = {
+    'Imported': 'royalblue',
+    'Manufactured': 'orange'
+}
+
+fig = make_subplots(
+    rows=1, cols=3,
+    shared_yaxes=True,
+    subplot_titles=regions
+)
+for col_idx, region in enumerate(regions, start=1):
+    df_region = df_filtered[df_filtered['Region'] == region]
+
+    for metric in ['Imported', 'Manufactured']:
+        df_best = df_region[df_region['Scenario'] == 'Best Case']
+        df_prob = df_region[df_region['Scenario'] == 'Probable Case']
+        df_worst = df_region[df_region['Scenario'] == 'Worst Case']
+
+        df_merge = df_prob.merge(
+            df_best[['Year', 'Country', 'Metric', 'Metric_Value']],
+            on=['Year', 'Country', 'Metric'],
+            suffixes=('_prob', '_best')
+        ).merge(
+            df_worst[['Year', 'Country', 'Metric', 'Metric_Value']],
+            on=['Year', 'Country', 'Metric']
+        )
+
+        df_merge = df_merge[df_merge['Metric'] == metric]
+
+        if region == "RoW":
+            df_year = df_merge.copy()
+        else:
+            df_year = df_merge.groupby('Year').sum(numeric_only=True).reset_index()
+
+        probable_vals = df_year['Metric_Value_prob']
+        best_vals = df_year['Metric_Value_best']
+        worst_vals = df_year['Metric_Value']
+
+        upper_error = worst_vals - probable_vals
+        lower_error = probable_vals - best_vals
+
+        if region == "RoW":
+            x_vals = df_year['Year'].astype(str) + " - " + df_year['Country']
+        else:
+            x_vals = [str(y) for y in years]
+
+        fig.add_trace(
+    go.Bar(
+                x=x_vals,
+                y=probable_vals,
+                name=metric,
+                marker_color=metric_colors[metric],
+                error_y=dict(
+                    type='data',
+                    symmetric=False,
+                    array=upper_error,
+                    arrayminus=lower_error
+                ),
+                showlegend=(col_idx == 1)
+            ),
+            row=1, col=col_idx
+        )
+
+fig.update_layout(
+    title="GWP",
+    barmode='group',
+    height=500,
+    width=1200,
+    margin=dict(t=80, l=50, r=50, b=50)
+)
+
+fig.update_yaxes(tickformat=".2e")
+
+fig.update_xaxes(title_text="Year", row=1, col=1)
+fig.update_xaxes(title_text="Year", row=1, col=2)
+fig.update_xaxes(title_text="Year", row=1, col=3)
+
+fig.update_yaxes(title_text="Gt CO2/yr", row=1, col=1)
+fig.show()

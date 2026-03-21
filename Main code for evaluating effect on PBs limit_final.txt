@@ -1,0 +1,873 @@
+
+# SANDS PLANETARY BOUNDARY LIMITS (2025–2100)
+# Code by Donald Nwonu, fine tuned with GPT 5.2
+# ============================================================
+
+!pip -q install openpyxl xlsxwriter
+
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import itertools
+
+# ----------------------------
+# USER SETTINGS
+# ----------------------------
+INPUT_XLSX = "/content/Effect of technology shift.xlsx"   # <- change if needed
+OUTPUT_XLSX = "/content/technology_shift_pb_evaluation_outputs_publication.xlsx"
+FIG_DIR = "/content/figures_pb_eval_publication"
+
+SAVE_FIGURES = True
+DPI = 1200
+GENERATE_SUPPLEMENTARY_ANNUAL_FIGURES = False   # set True if you want annual trajectory plots too
+
+# ----------------------------
+# PATH CHECK
+# ----------------------------
+def ensure_paths():
+    if not os.path.exists(INPUT_XLSX):
+        raise FileNotFoundError(
+            f"Input file not found: {INPUT_XLSX}\n"
+            "Upload the workbook in Colab and check its path (usually /content/...)."
+        )
+    os.makedirs(FIG_DIR, exist_ok=True)
+
+def savefig(fig, name):
+    if SAVE_FIGURES:
+        out = os.path.join(FIG_DIR, name)
+        fig.savefig(out, bbox_inches="tight", dpi=DPI)
+        print(f"Saved figure: {out}")
+
+# ----------------------------
+# PLOT SETTINGS
+# ----------------------------
+def set_style():
+    plt.rcParams.update({
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "DejaVu Sans"],
+        "font.size": 12,
+        "axes.titlesize": 13,
+        "axes.labelsize": 12,
+        "xtick.labelsize": 11,
+        "ytick.labelsize": 11,
+        "legend.fontsize": 11,
+        "legend.title_fontsize": 11,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "figure.dpi": DPI,
+        "savefig.dpi": 1200,
+    })
+
+# ----------------------------
+# LABEL HELPERS
+# ----------------------------
+def pb_short_label(name: str) -> str:
+    """
+    Return only the text inside parentheses for cleaner labels.
+    Example:
+      'Climate change (CO2 emissions)' -> 'CO2 emissions'
+    """
+    name = str(name)
+    if "(" in name and ")" in name:
+        return name.split("(", 1)[1].rsplit(")", 1)[0].strip()
+    return name
+
+# ----------------------------
+# PARSERS
+# ----------------------------
+def parse_technology_shift_sheet(xlsx_path: str) -> pd.DataFrame:
+    raw = pd.read_excel(xlsx_path, sheet_name="Technology shift")
+
+    raw = raw.iloc[:, :7].copy()
+    raw.columns = [
+        "pb_indicator", "region", "scenario", "effect_type",
+        "uncertainty", "delta_footprint", "unit"
+    ]
+
+    # fill merged cells
+    for c in ["pb_indicator", "region", "scenario", "effect_type", "unit"]:
+        raw[c] = raw[c].ffill()
+
+    # standardize names
+    raw["region"] = raw["region"].astype(str).str.strip().replace({
+        "Canada": "CAN",
+        "China": "CHN",
+        "Rest-of-the-World": "RoW",
+        "Rest-of-the-World ": "RoW",
+    })
+    raw["scenario"] = raw["scenario"].astype(str).str.strip()
+    raw["effect_type"] = raw["effect_type"].astype(str).str.strip().str.title()
+    raw["uncertainty"] = raw["uncertainty"].astype(str).str.strip().str.lower()
+    raw["pb_indicator"] = (
+        raw["pb_indicator"]
+        .astype(str)
+        .str.strip()
+        .str.replace(r"\s+", " ", regex=True)
+        .replace({
+            "Biogechemical flows (intentional N fixation)": "Biogeochemical flows (intentional N fixation)",
+            "Biogechemical flows (P fertiliser use)": "Biogeochemical flows (P fertiliser use)",
+        })
+    )
+    raw["delta_footprint"] = pd.to_numeric(raw["delta_footprint"], errors="coerce")
+
+    tech = (
+        raw.pivot_table(
+            index=["pb_indicator", "region", "scenario", "effect_type", "unit"],
+            columns="uncertainty",
+            values="delta_footprint",
+            aggfunc="first"
+        )
+        .reset_index()
+    )
+
+    for c in ["min", "median", "max"]:
+        if c not in tech.columns:
+            tech[c] = np.nan
+
+    # Robust mapping (accept both Biogeochemical and Biogechemical spellings)
+    pb_map = {
+        "Climate change (CO2 emissions)": "PLANETARY BOUNDARY LIMIT FOR CARBON EMISSION (GtCO2/yr)",
+
+        "Biogeochemical flows (intentional N fixation)": "PLANETARY BOUNDARY LIMIT FOR N FIXATION (Tg N/yr)",
+        "Biogechemical flows (intentional N fixation)": "PLANETARY BOUNDARY LIMIT FOR N FIXATION (Tg N/yr)",
+
+        "Biogeochemical flows (P fertiliser use)": "PLANETARY BOUNDARY LIMIT FOR P FERTILISER USE (Tg P/yr)",
+        "Biogechemical flows (P fertiliser use)": "PLANETARY BOUNDARY LIMIT FOR P FERTILISER USE (Tg P/yr)",
+
+        "Fresh water use (Blue water consumption)": "PLANETARY BOUNDARY LIMIT FOR BLUE WATER CONSUMPTION (km3/yr)",
+    }
+    tech["pb_limit_indicator_raw"] = tech["pb_indicator"].map(pb_map)
+
+    missing = tech[tech["pb_limit_indicator_raw"].isna()]["pb_indicator"].unique()
+    if len(missing):
+        raise ValueError(
+            "Unmapped indicators in 'Technology shift':\n" + "\n".join(map(str, missing))
+        )
+
+    return tech
+
+
+def parse_pb_limits_sheet(xlsx_path: str) -> pd.DataFrame:
+    raw = pd.read_excel(xlsx_path, sheet_name="Planetary boundary limits", header=None)
+
+    header0 = raw.iloc[0]
+    data = raw.iloc[3:].copy().reset_index(drop=True)
+    data.iloc[:, 0] = pd.to_numeric(data.iloc[:, 0], errors="coerce")
+    data = data[data.iloc[:, 0].notna()].copy()
+    data.iloc[:, 0] = data.iloc[:, 0].astype(int)
+
+    block_starts = [16, 31, 46, 61]  # workbook layout
+    records = []
+
+    for start in block_starts:
+        pb_block_name = header0[start]
+        for ssp_i, ssp in enumerate(["SSP1", "SSP2", "SSP3", "SSP4", "SSP5"]):
+            base = start + ssp_i * 3
+            for region_offset, region in enumerate(["CAN", "CHN", "RoW"]):
+                col = base + region_offset
+                vals = pd.to_numeric(data.iloc[:, col], errors="coerce")
+                records.append(pd.DataFrame({
+                    "year": data.iloc[:, 0].astype(int),
+                    "pb_limit_indicator_raw": pb_block_name,
+                    "ssp": ssp,
+                    "region": region,
+                    "pb_limit": vals
+                }))
+
+    limits = pd.concat(records, ignore_index=True).dropna(subset=["pb_limit"]).copy()
+    return limits
+
+
+# --------------------------------------------------
+# MIXED-SIGN BRANCHING DUE TO RoW TRANSPORT DISTANCE
+# --------------------------------------------------
+def expand_mixed_sign_branches(tech: pd.DataFrame) -> pd.DataFrame:
+    """
+    If a region has both Positive and Negative rows under the same (indicator, scenario),
+    split into separate scenario variants so both possibilities are represented.
+    """
+    expanded = []
+
+    for (pb, scen), g in tech.groupby(["pb_indicator", "scenario"], sort=False):
+        mixed_regions = [
+            r for r, gr in g.groupby("region")
+            if gr["effect_type"].nunique() > 1
+        ]
+
+        if not mixed_regions:
+            gg = g.copy()
+            gg["scenario_variant"] = scen
+            gg["variant_note"] = "single-sign"
+            expanded.append(gg)
+            continue
+
+        # Build all branch combinations (typically only RoW has dual sign)
+        choice_lists = []
+        for r in mixed_regions:
+            effects = sorted(g.loc[g["region"] == r, "effect_type"].dropna().unique())
+            choice_lists.append([(r, e) for e in effects])
+
+        for combo in itertools.product(*choice_lists):
+            chosen = dict(combo)
+            parts = []
+            out_rows = []
+
+            for r, gr in g.groupby("region", sort=False):
+                if r in chosen:
+                    out_rows.append(gr[gr["effect_type"] == chosen[r]])
+                    parts.append(f"{r}:{chosen[r]}")
+                else:
+                    out_rows.append(gr)
+
+            gg = pd.concat(out_rows, ignore_index=True)
+            gg["scenario_variant"] = f"{scen} | " + " ; ".join(parts)
+            gg["variant_note"] = "mixed-sign branch"
+            expanded.append(gg)
+
+    return pd.concat(expanded, ignore_index=True)
+
+
+# ----------------------------
+# MAIN EVALUATION ENGINE
+# ----------------------------
+def evaluate(tech_expanded: pd.DataFrame, limits: pd.DataFrame):
+    # Long uncertainty rows
+    long = tech_expanded.melt(
+        id_vars=["pb_indicator", "pb_limit_indicator_raw", "region", "scenario", "scenario_variant", "effect_type", "unit", "variant_note"],
+        value_vars=["min", "median", "max"],
+        var_name="uncertainty_stat",
+        value_name="delta_footprint"
+    )
+
+    # Merge with annual limits
+    annual_reg = long.merge(
+        limits, on=["pb_limit_indicator_raw", "region"], how="left"
+    )
+
+    if annual_reg["pb_limit"].isna().any():
+        bad = annual_reg[annual_reg["pb_limit"].isna()][["pb_indicator", "region", "scenario_variant"]].drop_duplicates()
+        raise ValueError(f"Missing PB limits after merge:\n{bad}")
+
+    # Annual metrics
+    annual_reg["annual_boundary_share_pct"] = annual_reg["delta_footprint"] / annual_reg["pb_limit"] * 100
+    annual_reg["annual_allowance"] = np.where(annual_reg["delta_footprint"] < 0, -annual_reg["delta_footprint"], 0.0)
+    annual_reg["annual_load"] = np.where(annual_reg["delta_footprint"] > 0, annual_reg["delta_footprint"], 0.0)
+    annual_reg["sign_semantic"] = np.where(
+        annual_reg["delta_footprint"] < 0,
+        "Allowance created (-Δ)",
+        "Additional load (+Δ)"
+    )
+
+    # WORLD totals (sum across CAN+CHN+RoW)
+    annual_world = (
+        annual_reg.groupby(
+            ["pb_indicator", "scenario", "scenario_variant", "variant_note", "uncertainty_stat", "ssp", "year", "unit"],
+            as_index=False
+        )
+        .agg(
+            delta_footprint=("delta_footprint", "sum"),
+            pb_limit=("pb_limit", "sum"),
+            annual_allowance=("annual_allowance", "sum"),
+            annual_load=("annual_load", "sum")
+        )
+    )
+    annual_world["region"] = "WORLD"
+    annual_world["effect_type"] = np.nan
+    annual_world["pb_limit_indicator_raw"] = np.nan
+    annual_world["annual_boundary_share_pct"] = annual_world["delta_footprint"] / annual_world["pb_limit"] * 100
+    annual_world["sign_semantic"] = np.where(
+        annual_world["delta_footprint"] < 0,
+        "Allowance created (-Δ)",
+        "Additional load (+Δ)"
+    )
+
+    annual_all = pd.concat([annual_reg, annual_world], ignore_index=True, sort=False)
+
+    # cumulative 2025->year
+    group_cols = ["pb_indicator", "region", "scenario", "scenario_variant", "ssp", "uncertainty_stat", "unit"]
+    annual_all = annual_all.sort_values(group_cols + ["year"]).copy()
+
+    annual_all["cum_delta_footprint"] = annual_all.groupby(group_cols)["delta_footprint"].cumsum()
+    annual_all["cum_pb_limit"] = annual_all.groupby(group_cols)["pb_limit"].cumsum()
+    annual_all["cum_boundary_share_pct"] = annual_all["cum_delta_footprint"] / annual_all["cum_pb_limit"] * 100
+    annual_all["cum_allowance"] = annual_all.groupby(group_cols)["annual_allowance"].cumsum()
+    annual_all["cum_load"] = annual_all.groupby(group_cols)["annual_load"].cumsum()
+
+    cum2100 = annual_all[annual_all["year"] == 2100].copy()
+
+    return annual_reg, annual_world, annual_all, cum2100
+
+
+# ----------------------------
+# PUBLICATION SUMMARY TABLES
+# ----------------------------
+def build_publication_summaries(cum2100: pd.DataFrame):
+    """
+    Summaries designed for figures and main-text statements.
+    """
+    # 1) Detailed 2100 table
+    detailed = cum2100.copy()
+
+    # 2) Figure-1 summary: collapse across SSPs and uncertainty into a median + global min/max
+    # for each (indicator, region, scenario_variant)
+    fig1_summary = (
+        cum2100.groupby(["pb_indicator", "region", "scenario_variant", "unit"], as_index=False)
+        .agg(
+            median_cum_share_pct=("cum_boundary_share_pct", "median"),
+            min_cum_share_pct=("cum_boundary_share_pct", "min"),
+            max_cum_share_pct=("cum_boundary_share_pct", "max"),
+            median_cum_delta=("cum_delta_footprint", "median"),
+            min_cum_delta=("cum_delta_footprint", "min"),
+            max_cum_delta=("cum_delta_footprint", "max"),
+        )
+    )
+
+    # 3) SSP-specific medians (uncertainty median only) for sensitivity discussion
+    ssp_median = cum2100[cum2100["uncertainty_stat"] == "median"].copy()
+
+    return detailed, fig1_summary, ssp_median
+
+
+# ----------------------------
+# FIGURE 1 (MAIN): WORLD cumulative PB-share impact by 2100
+# ----------------------------
+def plot_main_world_cum2100(fig1_summary: pd.DataFrame):
+    """
+    4-panel forest plot (WORLD only):
+    y = scenario branches
+    x = cumulative PB share impact by 2100 (%)
+    point = median across SSP + uncertainty combos
+    whisker = min–max across SSP + uncertainty combos
+    """
+    set_style()
+
+    world = fig1_summary[fig1_summary["region"] == "WORLD"].copy()
+    indicators_order = [
+        "Climate change (CO2 emissions)",
+        "Biogeochemical flows (intentional N fixation)",
+        "Biogeochemical flows (P fertiliser use)",
+        "Fresh water use (Blue water consumption)"
+    ]
+
+    def scenario_sort_key(s):
+        s = str(s)
+        if s.startswith("Best case"):
+            return (0, s)
+        if s.startswith("Probable case"):
+            return (1, s)
+        if s.startswith("Worst case"):
+            return (2, s)
+        return (9, s)
+
+    fig, axes = plt.subplots(2, 2, figsize=(12.8, 7.2))
+    axes = axes.ravel()
+
+    vmax = np.nanpercentile(np.abs(world[["min_cum_share_pct", "max_cum_share_pct"]].to_numpy()), 99)
+    vmax = max(vmax, 1.0)
+    xlim = (-1.1 * vmax, 1.1 * vmax)
+
+    color_map = {
+        "Best case": "#1b9e77",
+        "Probable case": "#7570b3",
+        "Worst case": "#d95f02",
+    }
+
+    for ax_i, (ax, ind) in enumerate(zip(axes, indicators_order)):
+        sub = world[world["pb_indicator"] == ind].copy()
+        if sub.empty:
+            ax.set_visible(False)
+            continue
+
+        sub = sub.sort_values("scenario_variant", key=lambda s: s.map(lambda x: scenario_sort_key(x)))
+        y = np.arange(len(sub))[::-1]
+
+        cols, mks = [], []
+        for s in sub["scenario_variant"]:
+            base = s.split("|")[0].strip()
+            cols.append(color_map.get(base, "0.25"))
+            if "Positive" in s:
+                mks.append("^")
+            elif "Negative" in s:
+                mks.append("v")
+            else:
+                mks.append("o")
+
+        x = sub["median_cum_share_pct"].to_numpy(float)
+        lo = sub["min_cum_share_pct"].to_numpy(float)
+        hi = sub["max_cum_share_pct"].to_numpy(float)
+
+        ax.axvline(0, color="0.6", lw=0.8, zorder=0)
+
+        for i in range(len(sub)):
+            ax.errorbar(
+                x[i], y[i],
+                xerr=np.array([[x[i] - lo[i]], [hi[i] - x[i]]]),
+                fmt=mks[i],
+                color=cols[i],
+                markersize=5,
+                capsize=2.5,
+                linewidth=1.2,
+                zorder=2
+            )
+
+        ax.set_yticks(y)
+        ax.set_yticklabels(sub["scenario_variant"])
+        ax.set_title(f"{chr(65+ax_i)}  {pb_short_label(ind)}")
+        ax.set_xlim(*xlim)
+        ax.grid(True, axis="x", alpha=0.2)
+
+        if ax_i in [0, 2]:
+            ax.set_ylabel("Scenario branch")
+
+        # x-axis labels only on bottom row (C, D)
+        if ax_i in [2, 3]:
+            ax.set_xlabel("Cumulative impact by 2100 relative to cumulative PB limits (%)")
+
+    fig.text(
+        0.5, 0.02,
+        "Negative = allowance created; positive = added load",
+        ha="center", va="bottom", fontsize=8
+    )
+
+    # Legend outside on the right
+    handles = [
+        plt.Line2D([], [], linestyle="None", marker="o", color="0.25", label="Single-sign scenario"),
+        plt.Line2D([], [], linestyle="None", marker="v", color="0.25", label="Mixed-sign branch (negative selected)"),
+        plt.Line2D([], [], linestyle="None", marker="^", color="0.25", label="Mixed-sign branch (positive selected)"),
+        plt.Line2D([], [], linestyle="None", marker="o", color=color_map["Best case"], label="Best case"),
+        plt.Line2D([], [], linestyle="None", marker="o", color=color_map["Probable case"], label="Probable case"),
+        plt.Line2D([], [], linestyle="None", marker="o", color=color_map["Worst case"], label="Worst case"),
+    ]
+    fig.legend(
+        handles=handles,
+        loc="center left",
+        frameon=False,
+        bbox_to_anchor=(0.85, 0.5),
+        borderaxespad=0.0
+    )
+
+    fig.subplots_adjust(top=0.92, bottom=0.10, left=0.19, right=0.82, wspace=1.25, hspace=0.35)
+    savefig(fig, "Fig1_MAIN_WORLD_cumulative2100_forest.png")
+    plt.show()
+
+
+# ---------------------------------------------
+# FIGURE 2 (MAIN / EXTENDED): Regional heatmaps
+# ---------------------------------------------
+def plot_main_regional_heatmaps(fig1_summary: pd.DataFrame):
+    """
+    Heatmaps of cumulative PB-share impact by 2100 (median across SSP+uncertainty combinations),
+    by region and scenario branch.
+
+    Display logic:
+      - CAN/CHN: collapse scenario_variant -> scenario_base (Best/Probable/Worst only)
+      - RoW/WORLD: keep scenario_variant (branch matters)
+
+    Also:
+      - PB labels use parenthetical short names
+      - x-axis labels only on bottom panels (C, D)
+      - colourbar placed outside to avoid clutter
+    """
+    # Use the same style function name as in your main code
+    set_style()
+
+    df = fig1_summary.copy()
+
+    def pb_short_label(name: str) -> str:
+        name = str(name)
+        if "(" in name and ")" in name:
+            return name.split("(", 1)[1].rsplit(")", 1)[0].strip()
+        return name
+
+    regions_order = ["CAN", "CHN", "RoW", "WORLD"]
+    indicators_order = [
+        "Climate change (CO2 emissions)",
+        "Biogeochemical flows (intentional N fixation)",
+        "Biogeochemical flows (P fertiliser use)",
+        "Fresh water use (Blue water consumption)",
+    ]
+
+    def scenario_sort_key(s):
+        s = str(s)
+        if s.startswith("Best case"):
+            return (0, s)
+        if s.startswith("Probable case"):
+            return (1, s)
+        if s.startswith("Worst case"):
+            return (2, s)
+        return (9, s)
+
+    # Colour scaling (diverging, centered at zero)
+    vmax = np.nanpercentile(np.abs(df["median_cum_share_pct"]), 99)
+    vmax = max(vmax, 1.0)
+    norm = mcolors.TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax)
+
+    fig, axes = plt.subplots(2, 2, figsize=(13.8, 7.8))
+    axes = axes.ravel()
+
+    im = None
+    for ax_i, (ax, region) in enumerate(zip(axes, regions_order)):
+        sub = df[df["region"] == region].copy()
+        if sub.empty:
+            ax.set_visible(False)
+            continue
+
+        # ---- Scenario labels and ordering ----
+        if region in ["CAN", "CHN"]:
+            # Collapse branch variants → base scenario
+            sub["scenario_display"] = sub["scenario_variant"].str.split("|").str[0].str.strip()
+            
+            # Keep only the three main scenarios (and force the order)
+            scenario_order = ["Best case", "Probable case", "Worst case"]
+            sub = sub[sub["scenario_display"].isin(scenario_order)].copy()
+            col_field = "scenario_display"
+            scenario_order = sorted(sub[col_field].unique(), key=scenario_sort_key)
+        else:
+            # Keep branched variants for RoW/WORLD
+            sub["scenario_display"] = sub["scenario_variant"]
+            col_field = "scenario_display"
+            scenario_order = sorted(sub[col_field].unique(), key=scenario_sort_key)
+
+        # Build matrix (first is safe because CAN/CHN duplicates across RoW branches are identical)
+        mat = (
+            sub.pivot_table(
+                index="pb_indicator",
+                columns=col_field,
+                values="median_cum_share_pct",
+                aggfunc="first",
+            )
+            .reindex(index=indicators_order, columns=scenario_order)
+        )
+
+        im = ax.imshow(mat.values, cmap="coolwarm", norm=norm, aspect="auto")
+
+        ax.set_title(f"{chr(65+ax_i)}  {region}")
+
+        ax.set_yticks(np.arange(len(mat.index)))
+        ax.set_yticklabels([pb_short_label(i) for i in mat.index])
+
+        ax.set_xticks(np.arange(len(mat.columns)))
+
+        # Show x-axis labels only on bottom row (C, D)
+        if ax_i in [2, 3]:
+            ax.set_xticklabels(mat.columns, rotation=35, ha="right")
+        else:
+            ax.set_xticklabels([])
+            ax.tick_params(axis="x", length=0)
+
+        # Annotate cells
+        for i in range(mat.shape[0]):
+            for j in range(mat.shape[1]):
+                val = mat.iloc[i, j]
+                if pd.notna(val):
+                    ax.text(j, i, f"{val:.2f}", ha="center", va="center", fontsize=7)
+
+    # Colourbar outside far right
+    cax = fig.add_axes([0.92, 0.18, 0.015, 0.64])  # [left, bottom, width, height]
+    cbar = fig.colorbar(im, cax=cax)
+    cbar.set_label(
+        "Cumulative impact by 2100 relative to cumulative PB limits (%)\n"
+        "(negative = allowance; positive = added load)"
+    )
+
+    
+    # Leave space for colourbar
+    fig.subplots_adjust(top=0.86, bottom=0.18, left=0.10, right=0.88, wspace=0.65, hspace=0.45)
+
+    savefig(fig, "Fig2_MAIN_regional_heatmaps_cum2100.png")
+    plt.show()
+
+
+#---------------------------------------------------
+# Additional plot: dual forest (relative + absolute)
+#---------------------------------------------------
+def plot_main_world_cum2100_dual(fig1_summary: pd.DataFrame):
+    """
+    Figure 1 variant (reviewer-friendly):
+    WORLD cumulative impacts by 2100 shown as dual forest plots:
+      Left column  = cumulative PB-share impact (%)
+      Right column = cumulative absolute Δ Footprint (native unit)
+    """
+    set_style()
+
+    world = fig1_summary[fig1_summary["region"] == "WORLD"].copy()
+
+    indicators_order = [
+        "Climate change (CO2 emissions)",
+        "Biogeochemical flows (intentional N fixation)",
+        "Biogeochemical flows (P fertiliser use)",
+        "Fresh water use (Blue water consumption)"
+    ]
+
+    def scenario_sort_key(s):
+        s = str(s)
+        if s.startswith("Best case"):
+            return (0, s)
+        if s.startswith("Probable case"):
+            return (1, s)
+        if s.startswith("Worst case"):
+            return (2, s)
+        return (9, s)
+
+    color_map = {
+        "Best case": "#1b9e77",
+        "Probable case": "#7570b3",
+        "Worst case": "#d95f02",
+    }
+
+    fig, axes = plt.subplots(
+        nrows=4, ncols=2, figsize=(14.5, 10.8),
+        gridspec_kw={"width_ratios": [1.0, 1.0], "wspace": 0.60, "hspace": 0.45}
+    )
+
+    vmax_share = np.nanpercentile(np.abs(world[["min_cum_share_pct", "max_cum_share_pct"]].to_numpy()), 99)
+    vmax_share = max(vmax_share, 1.0)
+    xlim_share = (-1.1 * vmax_share, 1.1 * vmax_share)
+
+    for r, ind in enumerate(indicators_order):
+        sub = world[world["pb_indicator"] == ind].copy()
+        if sub.empty:
+            axes[r, 0].set_visible(False)
+            axes[r, 1].set_visible(False)
+            continue
+
+        sub = sub.sort_values("scenario_variant", key=lambda s: s.map(lambda x: scenario_sort_key(x)))
+        y = np.arange(len(sub))[::-1]
+
+        cols, mks = [], []
+        for s in sub["scenario_variant"]:
+            base = s.split("|")[0].strip()
+            cols.append(color_map.get(base, "0.25"))
+            if "Positive" in s:
+                mks.append("^")
+            elif "Negative" in s:
+                mks.append("v")
+            else:
+                mks.append("o")
+
+        # -------- Left: PB-share (%) --------
+        axL = axes[r, 0]
+        x = sub["median_cum_share_pct"].to_numpy(float)
+        lo = sub["min_cum_share_pct"].to_numpy(float)
+        hi = sub["max_cum_share_pct"].to_numpy(float)
+
+        axL.axvline(0, color="0.6", lw=0.8, zorder=0)
+        for i in range(len(sub)):
+            axL.errorbar(
+                x[i], y[i],
+                xerr=np.array([[x[i] - lo[i]], [hi[i] - x[i]]]),
+                fmt=mks[i], color=cols[i], markersize=5,
+                capsize=2.5, linewidth=1.2, zorder=2
+            )
+
+        axL.set_xlim(*xlim_share)
+        axL.grid(True, axis="x", alpha=0.2)
+        axL.set_yticks(y)
+        axL.set_yticklabels(sub["scenario_variant"])
+        axL.set_ylabel(pb_short_label(ind))
+
+        if r == 0:
+            axL.set_title("Cumulative PB-share impact by 2100 (%)")
+        if r == len(indicators_order) - 1:
+            axL.set_xlabel("Cumulative impact by 2100 relative to cumulative PB limits (%)")
+
+        # -------- Right: Absolute Δ Footprint --------
+        axR = axes[r, 1]
+        x2 = sub["median_cum_delta"].to_numpy(float)
+        lo2 = sub["min_cum_delta"].to_numpy(float)
+        hi2 = sub["max_cum_delta"].to_numpy(float)
+
+        vmax_abs = np.nanmax(np.abs(np.r_[lo2, hi2]))
+        vmax_abs = max(vmax_abs, 1e-12)
+        xlim_abs = (-1.1 * vmax_abs, 1.1 * vmax_abs)
+
+        axR.axvline(0, color="0.6", lw=0.8, zorder=0)
+        for i in range(len(sub)):
+            axR.errorbar(
+                x2[i], y[i],
+                xerr=np.array([[x2[i] - lo2[i]], [hi2[i] - x2[i]]]),
+                fmt=mks[i], color=cols[i], markersize=5,
+                capsize=2.5, linewidth=1.2, zorder=2
+            )
+
+        axR.set_xlim(*xlim_abs)
+        axR.grid(True, axis="x", alpha=0.2)
+        axR.set_yticks(y)
+        axR.set_yticklabels([])
+
+        if r == 0:
+            axR.set_title("Cumulative absolute Δ Footprint by 2100")
+
+        # Include unit in x-axis label for each right-side row
+        unit_label = sub["unit"].dropna().iloc[0] if sub["unit"].notna().any() else ""
+        axR.set_xlabel(f"Cumulative absolute Δ Footprint by 2100 [{unit_label}]")
+
+    fig.text(
+        0.5, 0.005,
+        "Negative = allowance created; positive = added load",
+        ha="center", va="bottom", fontsize=8
+    )
+
+    # Single legend outside on the right
+    handles = [
+        plt.Line2D([], [], linestyle="None", marker="o", color="0.25", label="Single-sign scenario"),
+        plt.Line2D([], [], linestyle="None", marker="v", color="0.25", label="Mixed-sign branch (negative selected)"),
+        plt.Line2D([], [], linestyle="None", marker="^", color="0.25", label="Mixed-sign branch (positive selected)"),
+        plt.Line2D([], [], linestyle="None", marker="o", color=color_map["Best case"], label="Best case"),
+        plt.Line2D([], [], linestyle="None", marker="o", color=color_map["Probable case"], label="Probable case"),
+        plt.Line2D([], [], linestyle="None", marker="o", color=color_map["Worst case"], label="Worst case"),
+    ]
+    fig.legend(
+        handles=handles,
+        loc="center left",
+        ncol=1,
+        frameon=False,
+        bbox_to_anchor=(0.85, 0.5),
+        borderaxespad=0.0
+    )
+
+    
+    fig.subplots_adjust(top=0.93, bottom=0.06, left=0.23, right=0.80, wspace=0.60, hspace=0.55)
+    savefig(fig, "Fig1_MAIN_WORLD_cumulative2100_dual_forest.png")
+    plt.show()
+
+
+# ---------------------------------------------
+# SUPPLEMENTARY (OPTIONAL): Annual trajectories
+# ---------------------------------------------
+def plot_supp_world_annual_trajectories(annual_all: pd.DataFrame):
+    set_style()
+
+    df = annual_all[(annual_all["region"] == "WORLD") & (annual_all["uncertainty_stat"] == "median")].copy()
+    indicators_order = [
+        "Climate change (CO2 emissions)",
+        "Biogeochemical flows (intentional N fixation)",
+        "Biogeochemical flows (P fertiliser use)",
+        "Fresh water use (Blue water consumption)"
+    ]
+
+    color_map = {"Best case": "#1b9e77", "Probable case": "#7570b3", "Worst case": "#d95f02"}
+
+    fig, axes = plt.subplots(2, 2, figsize=(12.5, 7), sharex=True)
+    axes = axes.ravel()
+
+    for ax_i, (ax, ind) in enumerate(zip(axes, indicators_order)):
+        sub = df[df["pb_indicator"] == ind].copy()
+        if sub.empty:
+            ax.set_visible(False)
+            continue
+
+        ax.axhline(0, color="0.6", lw=0.8)
+
+        for svar, g in sub.groupby("scenario_variant"):
+            base = svar.split("|")[0].strip()
+            color = color_map.get(base, "0.25")
+            ls = "--" if "Positive" in svar else "-." if "Negative" in svar else "-"
+            gg = g.groupby("year", as_index=False)["annual_boundary_share_pct"].median()
+            ax.plot(gg["year"], gg["annual_boundary_share_pct"], color=color, lw=1.5, ls=ls, label=svar)
+
+        ax.set_title(f"{chr(65+ax_i)}  {pb_short_label(ind)}")
+        ax.grid(True, axis="y", alpha=0.2)
+
+        if ax_i in [0, 2]:
+            ax.set_ylabel("Annual PB share impact (%)")
+        if ax_i in [2, 3]:
+            ax.set_xlabel("Year")
+
+    # Legend outside right
+    handles, labels = [], []
+    for ax in axes:
+        h, l = ax.get_legend_handles_labels()
+        for hh, ll in zip(h, l):
+            if ll not in labels:
+                handles.append(hh)
+                labels.append(ll)
+
+    fig.legend(handles, labels, loc="center left", frameon=False, bbox_to_anchor=(1.01, 0.5))
+    fig.subplots_adjust(top=0.92, bottom=0.10, left=0.10, right=0.80, wspace=0.5, hspace=0.35)
+    savefig(fig, "FigS1_WORLD_annual_trajectories.png")
+    plt.show()
+
+
+# ----------------------------
+# EXPORTS
+# ----------------------------
+def export_outputs(tech, limits, tech_expanded, annual_reg, annual_world, annual_all, cum2100, detailed, fig1_summary, ssp_median):
+    with pd.ExcelWriter(OUTPUT_XLSX, engine="xlsxwriter") as writer:
+        tech.to_excel(writer, sheet_name="TechnologyShift_tidy", index=False)
+        limits.to_excel(writer, sheet_name="PBLimits_tidy", index=False)
+
+        tech_expanded.to_excel(writer, sheet_name="TechnologyShift_expanded", index=False)
+
+        annual_reg.to_excel(writer, sheet_name="Annual_Regional", index=False)
+        annual_world.to_excel(writer, sheet_name="Annual_WORLD", index=False)
+        annual_all.to_excel(writer, sheet_name="Annual_All_withCum", index=False)
+
+        cum2100.to_excel(writer, sheet_name="Cum2100_full", index=False)
+        detailed.to_excel(writer, sheet_name="PubSummary_detailed2100", index=False)
+        fig1_summary.to_excel(writer, sheet_name="PubSummary_fig1", index=False)
+        ssp_median.to_excel(writer, sheet_name="PubSummary_sspMedian", index=False)
+
+    print(f"Saved output workbook: {OUTPUT_XLSX}")
+
+
+# ----------------------------
+# MAIN
+# ----------------------------
+def main():
+    ensure_paths()
+
+    print("Reading and parsing workbook...")
+    tech = parse_technology_shift_sheet(INPUT_XLSX)
+    limits = parse_pb_limits_sheet(INPUT_XLSX)
+
+    print(f"Technology-shift tidy rows: {len(tech):,}")
+    print(f"PB limits tidy rows:        {len(limits):,}")
+
+    print("Expanding mixed-sign scenario branches...")
+    tech_expanded = expand_mixed_sign_branches(tech)
+
+    branch_table = (
+        tech_expanded[["pb_indicator", "scenario", "scenario_variant", "variant_note"]]
+        .drop_duplicates()
+        .sort_values(["pb_indicator", "scenario", "scenario_variant"])
+        .reset_index(drop=True)
+    )
+    print("\nScenario variants generated:")
+    print(branch_table.to_string(index=False))
+
+    print("\nEvaluating annual + cumulative impacts...")
+    annual_reg, annual_world, annual_all, cum2100 = evaluate(tech_expanded, limits)
+
+    print("Building publication summaries...")
+    detailed, fig1_summary, ssp_median = build_publication_summaries(cum2100)
+
+    # Quick headline (WORLD)
+    headline = fig1_summary[fig1_summary["region"] == "WORLD"].copy()
+    if not headline.empty:
+        print("\nWORLD cumulative impact by 2100 (median across SSP+uncertainty combinations):")
+        print(
+            headline[["pb_indicator", "scenario_variant", "median_cum_share_pct", "min_cum_share_pct", "max_cum_share_pct", "unit"]]
+            .sort_values(["pb_indicator", "scenario_variant"])
+            .to_string(index=False)
+        )
+
+    print("\nExporting outputs...")
+    export_outputs(tech, limits, tech_expanded, annual_reg, annual_world, annual_all, cum2100, detailed, fig1_summary, ssp_median)
+
+    print("\nGenerating publication figures...")
+    plot_main_world_cum2100(fig1_summary)
+    plot_main_world_cum2100_dual(fig1_summary)
+    plot_main_regional_heatmaps(fig1_summary)
+
+    if GENERATE_SUPPLEMENTARY_ANNUAL_FIGURES:
+        plot_supp_world_annual_trajectories(annual_all)
+
+    print("\nDone.")
+    print(f"Figures saved to: {FIG_DIR}")
+
+
+# RUN
+main()

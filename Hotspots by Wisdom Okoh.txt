@@ -1,0 +1,91 @@
+import plotly.graph_objects as go
+import pandas as pd
+
+data = pd.DataFrame({
+    "Country": [
+        "China", "China", "China", "China", "China", "China", "China", "China", "China",
+        "Canada", "Canada", "Canada", "Canada", "Canada", "Canada", "Canada", "Canada", "Canada",
+        "RoW", "RoW", "RoW", "RoW", "RoW", "RoW", "RoW", "RoW", "RoW"
+    ],
+    "Hotspot": [
+        "Drying", "Drying", "Drying", "Raw_Mat_Prd", "Sieving", "Sieving", "Drying", "Drying", "Drying",
+        "Drying", "Sieving", "Sieving", "Drying", "Sieving", "Sieving", "Transport", "Sieving", "Transport",
+        "Drying", "Drying", "Drying", "Raw_Mat_Prd", "Sieving", "Sieving", "Drying", "Drying", "Transport"
+    ],
+    "Impact": [
+        "GWP", "kgN", "kgP", "WDP", "HTP-c", "HTP-nc", "PM", "ETP-fw", "SQP",
+        "GWP", "kgN", "kgP", "WDP", "HTP-c", "HTP-nc", "PM", "ETP-fw", "SQP",
+        "GWP", "kgN", "kgP", "WDP", "HTP-c", "HTP-nc", "PM", "ETP-fw", "SQP"
+    ],
+    "Percent": [
+        48.9, 50.3, 48.9, 77.9, 37.6, 40.8, 47.3, 48.1, 24.9,   
+        36.5, 25.4, 72.4, 42.3, 43.4, 48.3, 53.9, 41.3, 63.8,    
+        46.8, 45.3, 52.5, 71.8, 38.7, 41.9, 37.3, 42.6, 42.6     
+    ]
+})
+
+import plotly.graph_objects as go
+
+country_colors = {
+    "China": "#FF7F0E",   
+    "Canada": "#1F77B4",  
+    "RoW": "#2CA02C"      
+}
+countries = data["Country"].unique().tolist()
+hotspots = data["Hotspot"].unique().tolist()
+impacts = data["Impact"].unique().tolist()
+
+labels = countries + hotspots + impacts
+label_dict = {label: i for i, label in enumerate(labels)}
+
+source_1 = data["Country"].map(label_dict)
+target_1 = data["Hotspot"].map(label_dict)
+
+source_2 = data["Hotspot"].map(label_dict)
+target_2 = data["Impact"].map(label_dict)
+
+source = list(source_1) + list(source_2)
+target = list(target_1) + list(target_2)
+values = list(data["Percent"].abs()) + list(data["Percent"].abs())
+
+link_colors_1 = data["Country"].map(country_colors)
+link_colors_2 = data["Country"].map(country_colors)
+link_colors = list(link_colors_1) + list(link_colors_2)
+
+node_colors = []
+for label in labels:
+    if label in country_colors:
+        node_colors.append(country_colors[label])  
+    elif label in hotspots:
+        node_colors.append("#BFBFBF")              
+    else:
+        node_colors.append("#E0E0E0")             
+HOTSPOTS by Wisdom Okoh
+
+
+fig = go.Figure(data=[go.Sankey(
+    arrangement="snap",
+    node=dict(
+        pad=20,
+        thickness=20,
+        line=dict(color="rgba(0,0,0,0)", width=0),
+        label=labels,
+        color=node_colors
+    ),
+    link=dict(
+        source=source,
+        target=target,
+        value=values,
+        color=link_colors
+    )
+)])
+
+fig.update_layout(
+    font_size=16,
+    width=1200,
+    height=700,
+    font=dict(color="black")
+
+)
+
+fig.show()

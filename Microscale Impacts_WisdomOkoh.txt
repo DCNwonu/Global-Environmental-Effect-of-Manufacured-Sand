@@ -1,0 +1,222 @@
+CODE BY Wisdom Okoh
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+regions = ["Canada", "China", "RoW"]
+family_order = ["Planetary boundary", "Human health", "Ecosystem damage"]
+indicator_order_by_family = {
+    "Planetary boundary": ["GWP", "kgN", "kgP", "WDP"],
+    "Human health": ["HTP-c", "HTP-nc", "PM"],
+    "Ecosystem damage": ["ETP-fw", "SQP"],
+}
+
+data = [
+
+    ["Planetary boundary", "GWP", "Canada", 0.04352, 0.031143584, 0.029704136, 0.033429125],
+    ["Planetary boundary", "GWP", "China", 0.04352, 0.097171555, 0.094724466, 0.100278715],
+    ["Planetary boundary", "GWP", "RoW", 0.04352, 0.08048914, 0.069398211, 0.095277306],
+    
+    ["Planetary boundary", "kgN", "Canada", 6.97e-05, 2.40452e-05, 2.05774e-05, 2.95157e-05],
+    ["Planetary boundary", "kgN", "China", 6.97e-05, 0.000115866, 0.000110878, 0.000122586],
+    ["Planetary boundary", "kgN", "RoW", 6.97e-05, 7.50069e-05, 6.42595e-05, 8.93979e-05],
+
+    ["Planetary boundary", "kgP", "Canada", 1.01e-06, 9.66793e-07, 4.1271e-07, 2.71158e-06],
+    ["Planetary boundary", "kgP", "China", 1.01e-06, 1.57806E-06, 5.65959E-07, 5.23767E-06],
+    ["Planetary boundary", "kgP", "RoW", 1.01e-06, 3.11692e-06,	1.26568e-06, 8.56237e-06],
+
+    ["Planetary boundary", "WDP", "Canada", 0.04871, 0.168975267, 0.150634315, 0.193434931],
+    ["Planetary boundary", "WDP", "China", 0.04871, 0.076346822, 0.059883026, 0.099404123],
+    ["Planetary boundary", "WDP", "RoW", 0.04871, 0.083419279, 0.06631298, 0.106923975],
+
+    ["Human health", "HTP-c", "Canada", 1.33e-11, 6.99751e-12, 5.60572e-12, 9.26274e-12],
+    ["Human health", "HTP-c", "China", 1.33e-11, 1.18013E-11, 9.82618E-12, 1.51773E-11],
+    ["Human health", "HTP-c", "RoW", 1.33e-11, 1.2135E-11, 9.93968E-12, 1.57607E-11],
+
+    ["Human health", "HTP-nc", "Canada", 3.21e-10, 3.59863e-10, 2.85354e-10, 4.9011e-10],
+    ["Human health", "HTP-nc", "China", 3.21e-10, 7.27046e-10, 5.87024e-10, 9.5343e-10],
+    ["Human health", "HTP-nc", "RoW", 3.21e-10, 6.29972e-10, 5.13461e-10, 8.08753e-10],
+
+    ["Human health", "PM", "Canada", 5.82e-09, 1.74697e-09, 1.36706e-09, 2.55017e-09],
+    ["Human health", "PM", "China", 5.82e-09, 7.25322E-09, 4.03247E-09, 1.65792E-08],
+    ["Human health", "PM", "RoW", 5.82e-09, 4.19571e-09, 2.86817e-09, 7.69831e-09],
+
+    ["Ecosystem damage", "ETP-fw", "Canada", 0.0985, 0.077095322, 0.065163011, 0.09375006],
+    ["Ecosystem damage", "ETP-fw", "China", 0.0985, 0.266622277, 0.181109457, 0.453988963],
+    ["Ecosystem damage", "ETP-fw", "RoW", 0.0985, 0.187243077, 0.145415824, 0.262333922],
+
+    ["Ecosystem damage", "SQP", "Canada", 1.098, 0.224558791, 0.082423009, 0.429720964],
+    ["Ecosystem damage", "SQP", "China", 1.098, 0.392820489, 0.236135449, 0.627444457],
+    ["Ecosystem damage", "SQP", "RoW", 1.098, 0.344141676, 0.196313275, 0.555169628],
+
+]
+
+user_df = pd.DataFrame(data, columns=[
+    "family",
+    "indicator",
+    "region",
+    "imported_median",
+    "manufactured_median",
+    "manufactured_min",
+    "manufactured_max"
+])
+
+def compute_delta_percent(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute Δ% (manufactured vs imported).
+    Imported has no uncertainty (fixed); manufactured has min/max.
+    """
+    df = df.copy()
+    I = pd.to_numeric(df["imported_median"], errors="coerce")
+
+    if I.isna().any():
+        raise ValueError("imported_median contains missing or non-numeric values.")
+    if (I == 0).any():
+        bad = df.loc[I == 0, ["family", "indicator", "region"]]
+        raise ValueError(f"Imported median is zero for some rows; %Δ undefined:\n{bad}")
+
+    for col in ["manufactured_median", "manufactured_min", "manufactured_max"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+        if df[col].isna().any():
+            raise ValueError(f"{col} contains missing or non-numeric values.")
+
+    df["delta_pct_med"] = (df["manufactured_median"] - I) / I * 100.0
+    df["delta_pct_min"] = (df["manufactured_min"] - I) / I * 100.0
+    df["delta_pct_max"] = (df["manufactured_max"] - I) / I * 100.0
+
+    return df
+
+
+def nature_forest_delta_percent(
+    df_in: pd.DataFrame,
+    family_order,
+    indicator_order_by_family,
+    region_order=("Canada", "China", "RoW"),
+    panel_letters=("A", "B", "C"),
+):
+    """
+    Nature-style 3-panel Δ% forest plot.
+    - One subplot per family (A–C)
+    - Points = median Δ% ; whiskers = min–max Δ%
+      (uncertainty from manufactured only; imported fixed)
+    - Consistent marker+color per region across all panels
+    - Single legend (figure-level)
+    """
+    df = compute_delta_percent(df_in)
+    
+    region_style = {
+        "Canada": {"marker": "o", "color": "C0"},
+        "China":  {"marker": "^", "color": "C1"},
+        "RoW":    {"marker": "s", "color": "C2"},
+    }
+
+    offsets = {"Canada": -0.18, "China": 0.00, "RoW": 0.18}
+
+    plt.rcParams.update({
+        "font.size": 15,
+        "axes.titlesize": 15,
+        "axes.labelsize": 15,
+        "legend.fontsize": 15,
+        "legend.title_fontsize": 15,
+    })
+
+    fig, axes = plt.subplots(
+        nrows=1, ncols=len(family_order),
+        figsize=(12, 4.8),
+        sharex=True,
+        gridspec_kw={"wspace": 0.25}
+    )
+
+    xlim = (-100, 800)
+
+    for ax_i, fam in enumerate(family_order):
+        ax = axes[ax_i] if len(family_order) > 1 else axes
+        fam_df = df[df["family"] == fam].copy()
+
+        inds = indicator_order_by_family[fam]
+        y_positions = {ind: (len(inds) - 1 - j) for j, ind in enumerate(inds)}
+
+        for reg in region_order:
+            style = region_style[reg]
+            sub = fam_df[fam_df["region"] == reg]
+
+            for _, r in sub.iterrows():
+                ind = r["indicator"]
+                if ind not in y_positions:
+                    continue
+
+                y0 = y_positions[ind] + offsets[reg]
+                x = float(r["delta_pct_med"])
+                lo = float(r["delta_pct_min"])
+                hi = float(r["delta_pct_max"])
+                xerr = np.array([[x - lo], [hi - x]]) 
+
+                ax.errorbar(
+                    x, y0, xerr=xerr,
+                    fmt=style["marker"],
+                    color=style["color"],
+                    markersize=4.8,
+                    capsize=2.5,
+                    linewidth=1.0,
+                )
+
+        ax.axvline(0, linewidth=1.0, color="0.2")
+
+        ax.set_yticks([y_positions[ind] for ind in inds])
+        ax.set_yticklabels(inds)
+
+        ax.set_xlim(*xlim)
+        ax.grid(True, axis="x", alpha=0.25)
+
+        ax.set_title(f"{panel_letters[ax_i]}  {fam}", pad=20)
+
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+        if ax_i == 0:
+            ax.set_ylabel("Indicator")
+        else:
+            ax.set_ylabel("")
+
+    fig.supxlabel("Δ% impact (manufactured vs imported)")
+
+    handles = []
+    labels = []
+    for reg in region_order:
+        style = region_style[reg]
+        h = plt.Line2D(
+            [], [], linestyle="None",
+            marker=style["marker"],
+            color=style["color"],
+            markersize=6,
+            label=reg
+        )
+        handles.append(h)
+        labels.append(reg)
+
+    fig.legend(
+        handles, labels, title="Region",
+        loc="upper center", ncol=3,
+        frameon=False, bbox_to_anchor=(0.5, 0.98)
+    )
+
+    fig.subplots_adjust(bottom=0.19, left=0.08, right=0.98, top=0.70, wspace=0.25)
+
+nature_forest_delta_percent(
+    user_df,
+    family_order=family_order,
+    indicator_order_by_family=indicator_order_by_family,
+    region_order=("Canada", "China", "RoW"),
+    panel_letters=("A", "B", "C"),
+)
+
+print(user_df.head(12).to_string(index=False))
+
+plt.savefig("Microscale_impacts.png", dpi=2000)
+plt.savefig("Microscale_impacts.pdf")
+
+plt.show()
+
+print("Plot exported successfully as 'Microscale_impacts.png' and 'Microscale_impacts.pdf'.")
+         
