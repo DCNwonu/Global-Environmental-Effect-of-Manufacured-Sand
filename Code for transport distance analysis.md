@@ -2,7 +2,7 @@
 
 **Code for RoW transport distance (sea-only) analysis for HS6 trade, using WITS import values**
 
-**and CERDI SeaDistance bilateral sea-route distances by Donald Nwonu, fine tuned with GPT 5.2**
+**and CERDI SeaDistance bilateral sea-route distances by Donald Nwonu**
 
 
 
