@@ -1,5 +1,5 @@
 # RCB EFFECT ANALYSIS (2025–2100) USING "Annual_WORLD" sheet results from PB effect evaluation. 
-# Code by Donald Nwonu, fine tuned with GPT 5.2 and adapted input from (Chaohui Li: https://github.com/lichaohui1997/Construction_code)
+# Code by Donald Nwonu and adapted input from (Chaohui Li: https://github.com/lichaohui1997/Construction_code)
 
 # ============================================================
 # RCB EFFECT ANALYSIS (2025–2100) USING "Annual_WORLD"
