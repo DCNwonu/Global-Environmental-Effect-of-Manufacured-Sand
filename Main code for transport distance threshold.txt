@@ -1,4 +1,4 @@
-# Code for Figure 4 - Transport distance threshold for sand import by Donald Nwonu (cleaned with ChatGPT 5.2)
+# Code for Figure 4 - Transport distance threshold for sand import by Donald Nwonu
 # ============================================================
 
 import os
