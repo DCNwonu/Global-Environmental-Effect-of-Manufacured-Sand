@@ -1,6 +1,6 @@
 
 # SANDS PLANETARY BOUNDARY LIMITS (2025–2100)
-# Code by Donald Nwonu, fine tuned with GPT 5.2
+# Code by Donald Nwonu
 # ============================================================
 
 !pip -q install openpyxl xlsxwriter
